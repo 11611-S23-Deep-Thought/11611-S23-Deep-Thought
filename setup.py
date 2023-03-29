@@ -3,10 +3,12 @@ import os
 
 # Online repo paths
 SYNQA_ONLINE    = 'mbartolo/roberta-large-synqa-ext'
+BOOLQ_ONLINE    = 'andi611/distilbert-base-uncased-qa-boolq'
 PASSAGES_ONLINE = 'cross-encoder/ms-marco-TinyBERT-L-2-v2'
 
 # local directory paths
 SYNQA_LOCAL     = 'models/roberta-large-synqa-ext'
+BOOLQ_LOCAL     = 'models/distilbert-base-uncased-qa-boolq'
 PASSAGES_LOCAL  = 'models/ms-marco-TinyBERT-L-2-v2'
 
 def download_model(repo_id, local_dir, redownload=False):
@@ -21,4 +23,5 @@ def download_model(repo_id, local_dir, redownload=False):
 if __name__=='__main__':
     # Download all models/tokenizers from HuggingFace to local system (in /models)
     download_model(SYNQA_ONLINE, SYNQA_LOCAL)
+    download_model(BOOLQ_ONLINE, BOOLQ_LOCAL)
     download_model(PASSAGES_ONLINE, PASSAGES_LOCAL)

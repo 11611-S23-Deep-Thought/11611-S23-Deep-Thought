@@ -17,7 +17,8 @@ import os
 
 # Define all model configs and hyperparameters
 config = {
-    'qa_model': SYNQA_LOCAL,
+    'qa_model1': SYNQA_LOCAL,               # model for regular questions
+    'qa_model2': BOOLQ_LOCAL,               # model for yes/no questions
     'qa_ranker': PASSAGES_LOCAL,
     'max_length': 400,                      # max length of input sequence
     'truncation': 'only_second',            # never truncate the question, only the context
@@ -30,6 +31,7 @@ config = {
     'max_answer_length': 120,               # max length of each answer
     'batch_size': 128,                      # batch size
 }
+wh_questions = ['what', 'when', 'where', 'who', 'whom', 'which', 'whose', 'why', 'how']
 
 # Read the text files
 def read_files(article, questions):
@@ -62,6 +64,18 @@ def read_files(article, questions):
 
     return passages, questions
 
+# Build QA pipeline
+def build_pipeline(model_name, DEVICE):
+    model = AutoModelForQuestionAnswering.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    QA = pipeline('question-answering',
+                  model=model,
+                  tokenizer=tokenizer,
+                  device=DEVICE,
+                  framework='pt') # use PyTorch instead of TensorFlow
+    return QA
+    
+
 # Find the most relevant passages in the article, then merge into 1 context
 def reduce_article(ranker, q, passages):
     scores = ranker.predict([(q, passage) for passage in passages])
@@ -69,6 +83,10 @@ def reduce_article(ranker, q, passages):
     context = ' '.join([passages[i] for i in best_idx])
     logging.debug(f'Relevant Context: {context}')
     return context
+
+def is_polar(q):
+    first_word = q.split()[0]
+    return first_word in wh_questions
 
 def main(args):
 
@@ -83,15 +101,11 @@ def main(args):
         DEVICE = torch.device("cpu")
     logging.debug(f'using {DEVICE}')
 
-    # Build the QA/QG model
-    logging.debug('building QA pipeline...')
-    model = AutoModelForQuestionAnswering.from_pretrained(config['qa_model'])
-    tokenizer = AutoTokenizer.from_pretrained(config['qa_model'])
-    QA = pipeline('question-answering',
-                  model=model,
-                  tokenizer=tokenizer,
-                  device=DEVICE,
-                  framework='pt') # use PyTorch instead of TensorFlow
+    # Build the QA models
+    logging.debug('building first QA pipeline...')
+    QA1 = build_pipeline(config['qa_model1'], DEVICE) # for regular wh- questions
+    logging.debug('building second QA pipeline...')
+    QA2 = build_pipeline(config['qa_model2'], DEVICE) # for polar questions
 
     # Build the passage ranker
     logging.debug('building ranker...')
@@ -102,9 +116,18 @@ def main(args):
 
 
     for q in questions:
-        # Get the list of answers (+confidences) for each question
+
+        # Get the most relevant passages
         context = reduce_article(ranker, q, passages)
-        answers = QA(question=q, context=context, top_k=config['top_a'])
+
+        # First identify the question type
+        # Then get the list of answers (+confidences) for each question
+        if not is_polar(q):
+            logging.debug('Not polar: using QA1')
+            answers = QA1(question=q, context=context, top_k=config['top_a'])
+        else:
+            logging.debug('Polar: using QA2')
+            answers = QA2(question=q, context=context, top_k=config['top_a'])
         for a in answers:
             logging.debug('Candidate: %s (%.3f)' % (a['answer'], a['score']))
         
