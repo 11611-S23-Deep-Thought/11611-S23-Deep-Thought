@@ -1,5 +1,6 @@
-torch           # Pytorch is the basis of ALL our models
+torch                 # Pytorch is the basis of ALL our models
 datasets
 transformers
 evaluate
-huggingface_hub # fast way to download models directly from HuggingFace
+huggingface_hub       # fast way to download models directly from HuggingFace
+sentence_transformers # useful for passage ranking
