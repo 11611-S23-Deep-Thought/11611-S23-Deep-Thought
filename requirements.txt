@@ -1,6 +1,6 @@
 torch                 # Pytorch is the basis of ALL our models
 datasets
 transformers
-evaluate
+boolean_question      # a simple boolean-question answering system
 huggingface_hub       # fast way to download models directly from HuggingFace
 sentence_transformers # useful for passage ranking

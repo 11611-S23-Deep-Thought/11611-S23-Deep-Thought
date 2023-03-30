@@ -2,24 +2,28 @@
 
 import numpy as np
 import torch
+import transformers
 from transformers import (
     AutoTokenizer,
     AutoModelForQuestionAnswering,
+    AutoModelForSequenceClassification,
     pipeline
 )
 from sentence_transformers import CrossEncoder
+from boolean_question import BoolQ
 
 from setup import *
 import logging
 import argparse
+import sys
 import os
 
 
 # Define all model configs and hyperparameters
 config = {
-    'qa_model1': SYNQA_LOCAL,               # model for regular questions
-    'qa_model2': BOOLQ_LOCAL,               # model for yes/no questions
-    'qa_ranker': PASSAGES_LOCAL,
+    'qa_model1': SYNQA_ONLINE,               # model for regular questions
+    'qa_model2': POLAR_ONLINE,               # model for yes/no questions
+    'qa_ranker': PASSAGES_ONLINE,
     'max_length': 400,                      # max length of input sequence
     'truncation': 'only_second',            # never truncate the question, only the context
     'padding': 'max_length',                # how to pad the input sequence
@@ -31,7 +35,6 @@ config = {
     'max_answer_length': 120,               # max length of each answer
     'batch_size': 128,                      # batch size
 }
-wh_questions = ['what', 'when', 'where', 'who', 'whom', 'which', 'whose', 'why', 'how']
 
 # Read the text files
 def read_files(article, questions):
@@ -48,14 +51,14 @@ def read_files(article, questions):
     with open(article, 'r') as f:
         for a in f.read().split('\n'):
             a = a.strip()
-            if len(a)==0 or a[-1] not in '.!?': # must end in real sentence
+            if len(a)==0 or a[-1] not in '.!?"\'': # must end in real sentence or quote
                 continue
             passages.append(a)
 
     # Read the questions
     with open(questions, 'r') as f:
         questions = f.read().splitlines()
-
+    
     # Debug: print all articles and questions
     for i, p in enumerate(passages):
         logging.debug(f'Passage {i}: {p}')
@@ -74,7 +77,21 @@ def build_pipeline(model_name, DEVICE):
                   device=DEVICE,
                   framework='pt') # use PyTorch instead of TensorFlow
     return QA
-    
+
+def build_pipeline2(model_name, DEVICE):
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    QA = pipeline('text-classification',
+                  model=model,
+                  tokenizer=tokenizer,
+                  device=DEVICE,
+                  framework='pt'
+                  ) # use PyTorch instead of TensorFlow
+    return QA
+
+def build_pipeline3():
+    transformers.logging.set_verbosity_error() # silence logging warnings
+    return BoolQ()
 
 # Find the most relevant passages in the article, then merge into 1 context
 def reduce_article(ranker, q, passages):
@@ -84,9 +101,12 @@ def reduce_article(ranker, q, passages):
     logging.debug(f'Relevant Context: {context}')
     return context
 
+# Determine is question is polar or not
 def is_polar(q):
-    first_word = q.split()[0]
-    return first_word in wh_questions
+    wh_questions = ['what', 'when', 'where', 'who', 'whom', 'which', 'whose', 'why', 'how']
+    first_word = q.split()[0].lower()
+    return first_word not in wh_questions
+    
 
 def main(args):
 
@@ -102,10 +122,11 @@ def main(args):
     logging.debug(f'using {DEVICE}')
 
     # Build the QA models
-    logging.debug('building first QA pipeline...')
-    QA1 = build_pipeline(config['qa_model1'], DEVICE) # for regular wh- questions
-    logging.debug('building second QA pipeline...')
-    QA2 = build_pipeline(config['qa_model2'], DEVICE) # for polar questions
+    logging.debug('building first QA pipeline...') # for regular wh- questions
+    QA1 = build_pipeline(config['qa_model1'], DEVICE)
+    logging.debug('building second QA pipeline...') # for polar questions
+    # QA2 = build_pipeline2(config['qa_model2'], DEVICE)
+    b = build_pipeline3()
 
     # Build the passage ranker
     logging.debug('building ranker...')
@@ -125,14 +146,19 @@ def main(args):
         if not is_polar(q):
             logging.debug('Not polar: using QA1')
             answers = QA1(question=q, context=context, top_k=config['top_a'])
+            
+            for a in answers:
+                logging.debug('Candidate: %s (%.3f)' % (a['answer'], a['score']))
+            a = answers[0]['answer']
         else:
             logging.debug('Polar: using QA2')
-            answers = QA2(question=q, context=context, top_k=config['top_a'])
-        for a in answers:
-            logging.debug('Candidate: %s (%.3f)' % (a['answer'], a['score']))
+            a = 'Yes' if b.predict(context, q) else 'No'
+            data = b.prediction_details()
+            logging.debug('Candidate: %s (True: %.3f, False: %.3f)' %
+                          (data['answer'], data['true confidence'], data['false confidence']))
+        
         
         # Print the best answer
-        a = answers[0]['answer']
         logging.debug(f'Q: {q}')
         logging.debug(f'A: {a}')
         logging.debug('- '*10)
@@ -141,7 +167,7 @@ def main(args):
 if __name__=='__main__':
 
     # Define logging level
-    DEBUG = True # print debug messages?
+    DEBUG = False # print debug messages?
     level = logging.DEBUG if DEBUG else logging.WARNING
     logging.basicConfig(level=level)
 
