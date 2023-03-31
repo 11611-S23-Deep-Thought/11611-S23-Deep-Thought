@@ -7,7 +7,7 @@ Note:
 How to run and compile:
 1. ```$ python3 setup.py```
     - this also runs ```$ pip3 install -r requirements.txt```
-    - load all the models locally to models/ before running programs!
+    - load all the models before running programs!
 2. add ```#!/usr/bin/env python3``` to the top of scripts (answer.py and ask.py)
 3. in main() of each program, set ```DEBUG=True``` or ```DEBUG=False```
 4. ```$ chmod +x answer.py ask.py```

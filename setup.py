@@ -8,9 +8,6 @@ POLAR_ONLINE    = 'andi611/distilbert-base-uncased-qa-boolq'
 PASSAGES_ONLINE = 'cross-encoder/ms-marco-TinyBERT-L-2-v2'
 
 def download_model(repo_id, redownload=False):
-    # if not redownload and os.path.isdir(local_dir):
-    #     print(f'{repo_id} is already saved (pass redownload=True to download it again)')
-    #     return
 
     # this is saved in your cache! delete the cache after you're done.
     path = snapshot_download(repo_id=repo_id)

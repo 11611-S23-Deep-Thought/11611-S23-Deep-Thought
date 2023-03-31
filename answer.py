@@ -122,6 +122,7 @@ def main(args):
     logging.debug(f'using {DEVICE}')
 
     # Build the QA models
+    transformers.logging.set_verbosity_error()
     logging.debug('building first QA pipeline...') # for regular wh- questions
     QA1 = build_pipeline(config['qa_model1'], DEVICE)
     logging.debug('building second QA pipeline...') # for polar questions
