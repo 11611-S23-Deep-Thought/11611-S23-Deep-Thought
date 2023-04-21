@@ -1,6 +1,5 @@
 from huggingface_hub import snapshot_download
 import os
-from boolean_question import BoolQ
 
 # Online repo paths
 SYNQA_ONLINE    = 'mbartolo/roberta-large-synqa-ext'
@@ -17,6 +16,7 @@ if __name__=='__main__':
     # Install all pip requirements
     os.system('pip3 install -r requirements.txt')
 
+    '''
     # Download all models/tokenizers from HuggingFace to local system (in /models)
     download_model(SYNQA_ONLINE)
     download_model(PASSAGES_ONLINE)
@@ -24,3 +24,4 @@ if __name__=='__main__':
     # BACKUP: in case POLAR_ONLINE doesn't work well, use 'from boolean_question import BoolQ'
     # code is in https://github.com/Saadmairaj/boolean-question/blob/master/boolean_question/boolq.py
     BoolQ()
+    '''

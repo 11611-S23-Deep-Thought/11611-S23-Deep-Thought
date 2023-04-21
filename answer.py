@@ -10,10 +10,10 @@ from transformers import (
     pipeline
 )
 from sentence_transformers import CrossEncoder
-from boolean_question import BoolQ
 
 from setup import *
 import logging
+import gdown
 import argparse
 import sys
 import os
@@ -22,7 +22,7 @@ import os
 # Define all model configs and hyperparameters
 config = {
     'qa_model1': SYNQA_ONLINE,               # model for regular questions
-    'qa_model2': POLAR_ONLINE,               # model for yes/no questions
+    'qa_model2': POLAR_ONLINE,               # model for yes/no (polar) questions
     'qa_ranker': PASSAGES_ONLINE,
     'max_length': 400,                      # max length of input sequence
     'truncation': 'only_second',            # never truncate the question, only the context
@@ -67,6 +67,40 @@ def read_files(article, questions):
 
     return passages, questions
 
+# Question Answering pipeline; copied from https://github.com/Saadmairaj/boolean-question
+class BoolQ:
+    def __init__(self, DEVICE):
+        # Download the model file
+        # Mac users should delete __MACOSX folder, though not necessary
+        if not os.path.exists('model/'):
+            file_url = "https://github.com/Saadmairaj/boolean-question/releases/download/model-v1/model.zip"
+            filename = gdown.download(file_url, 'model.zip', quiet=True, use_cookies=True)
+            if filename == None:
+                raise BaseException("Failed to download model.zip for BoolQ")
+            gdown.extractall(filename)
+
+        # Set seeds for reproducability
+        np.random.seed(0)
+        torch.manual_seed(0)
+
+        # Build model pipeline
+        self.tokenizer = AutoTokenizer.from_pretrained('model/')
+        self.model = AutoModelForSequenceClassification.from_pretrained('model/').to(DEVICE)
+        self.DEVICE = DEVICE
+
+    def predict(self, question:str, context:str):
+        sequence = self.tokenizer.encode_plus(
+            question, context, return_tensors="pt")['input_ids'].to(self.DEVICE)
+        logits = self.model(sequence)[0]
+        probabilities = torch.softmax(logits, dim=1).detach().cpu().tolist()[0]
+        
+        true  = {'answer': 'Yes', 'score': round(probabilities[1], 3)}
+        false = {'answer': 'No',  'score': round(probabilities[0], 3)}
+        if true['score'] > false['score']:
+            return [true, false]
+        else:
+            return [false, true]
+
 # Build QA pipeline
 def build_pipeline(model_name, DEVICE):
     model = AutoModelForQuestionAnswering.from_pretrained(model_name)
@@ -78,7 +112,7 @@ def build_pipeline(model_name, DEVICE):
                   framework='pt') # use PyTorch instead of TensorFlow
     return QA
 
-def build_pipeline2(model_name, DEVICE):
+def build_pipeline2_broken(model_name, DEVICE):
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     QA = pipeline('text-classification',
@@ -89,9 +123,9 @@ def build_pipeline2(model_name, DEVICE):
                   ) # use PyTorch instead of TensorFlow
     return QA
 
-def build_pipeline3():
+def build_pipeline2(DEVICE):
     transformers.logging.set_verbosity_error() # silence logging warnings
-    return BoolQ()
+    return BoolQ(DEVICE)
 
 # Find the most relevant passages in the article, then merge into 1 context
 def reduce_article(ranker, q, passages):
@@ -126,8 +160,7 @@ def main(args):
     logging.debug('building first QA pipeline...') # for regular wh- questions
     QA1 = build_pipeline(config['qa_model1'], DEVICE)
     logging.debug('building second QA pipeline...') # for polar questions
-    # QA2 = build_pipeline2(config['qa_model2'], DEVICE)
-    b = build_pipeline3()
+    QA2 = build_pipeline2(DEVICE)
 
     # Build the passage ranker
     logging.debug('building ranker...')
@@ -147,16 +180,13 @@ def main(args):
         if not is_polar(q):
             logging.debug('Not polar: using QA1')
             answers = QA1(question=q, context=context, top_k=config['top_a'])
-            
-            for a in answers:
-                logging.debug('Candidate: %s (%.3f)' % (a['answer'], a['score']))
-            a = answers[0]['answer']
         else:
             logging.debug('Polar: using QA2')
-            a = 'Yes' if b.predict(context, q) else 'No'
-            data = b.prediction_details()
-            logging.debug('Candidate: %s (True: %.3f, False: %.3f)' %
-                          (data['answer'], data['true confidence'], data['false confidence']))
+            answers = QA2.predict(question=q, context=context)
+            
+        for a in answers:
+            logging.debug('Candidate: %s (%.3f)' % (a['answer'], a['score']))
+        a = answers[0]['answer']
         
         
         # Print the best answer
