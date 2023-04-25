@@ -11,13 +11,15 @@ from transformers import (
 )
 from sentence_transformers import CrossEncoder
 
-from setup import *
 import logging
 import gdown
 import argparse
 import sys
 import os
 
+SYNQA_ONLINE    = 'mbartolo/roberta-large-synqa-ext'
+POLAR_ONLINE    = 'andi611/distilbert-base-uncased-qa-boolq'
+PASSAGES_ONLINE = 'cross-encoder/ms-marco-TinyBERT-L-2-v2'
 
 # Define all model configs and hyperparameters
 config = {
@@ -103,6 +105,8 @@ class BoolQ:
 
 # Build QA pipeline
 def build_pipeline(model_name, DEVICE):
+    transformers.utils.logging.set_verbosity(transformers.logging.FATAL)
+    transformers.utils.logging.disable_progress_bar()
     model = AutoModelForQuestionAnswering.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     QA = pipeline('question-answering',
@@ -113,6 +117,8 @@ def build_pipeline(model_name, DEVICE):
     return QA
 
 def build_pipeline2_broken(model_name, DEVICE):
+    transformers.utils.logging.set_verbosity(transformers.logging.FATAL)
+    transformers.utils.logging.disable_progress_bar()
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     QA = pipeline('text-classification',
@@ -124,6 +130,8 @@ def build_pipeline2_broken(model_name, DEVICE):
     return QA
 
 def build_pipeline2(DEVICE):
+    transformers.utils.logging.set_verbosity(transformers.logging.FATAL)
+    transformers.utils.logging.disable_progress_bar()
     transformers.logging.set_verbosity_error() # silence logging warnings
     return BoolQ(DEVICE)
 
@@ -157,6 +165,8 @@ def main(args):
 
     # Build the QA models
     transformers.logging.set_verbosity_error()
+    transformers.utils.logging.set_verbosity(transformers.logging.FATAL)
+    transformers.utils.logging.disable_progress_bar()
     logging.debug('building first QA pipeline...') # for regular wh- questions
     QA1 = build_pipeline(config['qa_model1'], DEVICE)
     logging.debug('building second QA pipeline...') # for polar questions
